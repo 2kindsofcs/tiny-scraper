@@ -18,17 +18,18 @@ func main() {
 	// 5초에 한 번씩 웹페이지들을 긁어서 정보를 저장
 	//
 	for _, endpoint := range endpoints {
-		title, link, err := scrapeKubepodcast(endpoint)
+		title, link, err := scrapeKubePodcast(endpoint)
 		if err != nil {
 			//do something
 		}
 		fmt.Println(title, link)
+		scrapeHerokuPodcast("https://www.heroku.com/podcasts/codeish")
 		fmt.Println("end")
 		continue
 	}
 }
 
-func scrapeKubepodcast(endpoint string) (title, link string, err error) {
+func scrapeKubePodcast(endpoint string) (title, link string, err error) {
 	resp, err := http.Get(endpoint)
 	if err != nil {
 		return "", "", err
@@ -52,6 +53,36 @@ func scrapeKubepodcast(endpoint string) (title, link string, err error) {
 			}
 			title = s.Text()
 			link = l
+		}
+	})
+
+	return title, link, nil
+}
+
+func scrapeHerokuPodcast(endpoint string) (title, link string, err error) {
+	resp, err := http.Get(endpoint)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", "", err
+	}
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return "", "", err
+	}
+
+	doc.Find("div.episode-text-summary h2").Each(func(i int, s *goquery.Selection) {
+		if strings.Contains(strings.ToLower(s.Text()), "engineering") {
+			l, ok := s.Find("a").First().Attr("href")
+			if !ok {
+				panic("link should exist.")
+			}
+			title = s.Text()
+			link = "https://heroku.com" + l
 		}
 	})
 
