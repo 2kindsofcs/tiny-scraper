@@ -6,6 +6,7 @@ import (
 	"golang.org/x/net/html/charset"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -17,7 +18,7 @@ func main() {
 	// 5초에 한 번씩 웹페이지들을 긁어서 정보를 저장
 	//
 	for _, endpoint := range endpoints {
-		content, err := scrape(endpoint)
+		content, err := scrapeKubepodcast(endpoint)
 		if err != nil {
 			//do something
 		}
@@ -27,7 +28,7 @@ func main() {
 	}
 }
 
-func scrape(endpoint string) (content string, err error) {
+func scrapeKubepodcast(endpoint string) (content string, err error) {
 	resp, err := http.Get(endpoint)
 	if err != nil {
 		return "", err
@@ -43,7 +44,16 @@ func scrape(endpoint string) (content string, err error) {
 		return "", err
 	}
 
-	content = doc.Find("div.episode").First().Find("h3").Text()
+	doc.Find("div.episode h3").Each(func(i int, s *goquery.Selection) {
+		if strings.Contains(strings.ToLower(s.Text()), "istio") {
+			link, ok := s.Find("a").First().Attr("href")
+			if !ok {
+				panic("link should exist.")
+			}
+			content = link
+		}
+	})
+
 	return content, nil
 }
 
