@@ -7,42 +7,60 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
 func main() {
+	var wg sync.WaitGroup
+	resChan := make(chan Result, 2)
+	results := make([]Result, 0, 2)
 
-	endpoints := []string{"https://kubernetespodcast.com/"}
+	c := time.Tick(3 * time.Second)
 
-	// 5초에 한 번씩 웹페이지들을 긁어서 정보를 저장
-	//
-	for _, endpoint := range endpoints {
-		title, link, err := scrapeKubePodcast(endpoint)
-		if err != nil {
-			//do something
+	for {
+		select {
+		case <-c:
+			wg.Add(2)
+			go scrapeKubePodcast("https://kubernetespodcast.com/", &wg, resChan)
+			go scrapeHerokuPodcast("https://www.heroku.com/podcasts/codeish", &wg, resChan)
+			wg.Wait()
+
+		case data := <-resChan:
+			results = append(results, data)
+			if len(results) == 2 {
+				fmt.Println(results)
+				//TODO: DB에 저장
+				results = make([]Result, 0, 2)
+			}
 		}
-		fmt.Println(title, link)
-		scrapeHerokuPodcast("https://www.heroku.com/podcasts/codeish")
-		fmt.Println("end")
-		continue
 	}
 }
 
-func scrapeKubePodcast(endpoint string) (title, link string, err error) {
+type Result struct {
+	title string
+	link  string
+}
+
+func scrapeKubePodcast(endpoint string, wg *sync.WaitGroup, resChan chan<- Result) {
+	defer wg.Done()
+	var title, link string
+
 	resp, err := http.Get(endpoint)
 	if err != nil {
-		return "", "", err
+		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", err
+		return
 	}
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		return "", "", err
+		return
 	}
 
 	doc.Find("div.episode h3").Each(func(i int, s *goquery.Selection) {
@@ -55,24 +73,30 @@ func scrapeKubePodcast(endpoint string) (title, link string, err error) {
 			link = l
 		}
 	})
-
-	return title, link, nil
+	resChan <- Result{
+		title: title,
+		link:  link,
+	}
+	return
 }
 
-func scrapeHerokuPodcast(endpoint string) (title, link string, err error) {
+func scrapeHerokuPodcast(endpoint string, wg *sync.WaitGroup, resChan chan<- Result) {
+	defer wg.Done()
+	var title, link string
+
 	resp, err := http.Get(endpoint)
 	if err != nil {
-		return "", "", err
+		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", err
+		return
 	}
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		return "", "", err
+		return
 	}
 
 	doc.Find("div.episode-text-summary h2").Each(func(i int, s *goquery.Selection) {
@@ -86,7 +110,11 @@ func scrapeHerokuPodcast(endpoint string) (title, link string, err error) {
 		}
 	})
 
-	return title, link, nil
+	resChan <- Result{
+		title: title,
+		link:  link,
+	}
+	return
 }
 
 // utf-8인지 검사하는 유틸 함수. 꼭 여기 있을 필요는 없음.
