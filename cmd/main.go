@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"golang.org/x/net/html/charset"
 	"io"
 	"net/http"
@@ -14,29 +13,31 @@ import (
 )
 
 func main() {
-	var wg sync.WaitGroup
-	resChan := make(chan Result, 2)
-	results := make([]Result, 0, 2)
-
 	c := time.Tick(3 * time.Second)
 
+	// main()
 	for {
 		select {
 		case <-c:
+			var wg sync.WaitGroup
+			resChan := make(chan Result, 2)
+			results := make([]Result, 0, 2)
+
 			wg.Add(2)
 			go scrapeKubePodcast("https://kubernetespodcast.com/", &wg, resChan)
 			go scrapeHerokuPodcast("https://www.heroku.com/podcasts/codeish", &wg, resChan)
 			wg.Wait()
 
-		case data := <-resChan:
-			results = append(results, data)
-			if len(results) == 2 {
-				fmt.Println(results)
-				//TODO: DB에 저장
-				results = make([]Result, 0, 2)
+			close(resChan)
+			for data := range resChan {
+				results = append(results, data)
+				if len(results) == 2 {
+					//TODO: Do something()
+				}
 			}
 		}
 	}
+
 }
 
 type Result struct {
